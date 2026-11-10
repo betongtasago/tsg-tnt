@@ -312,6 +312,19 @@ class CameraAgent:
             "note": f"Vung: {zone_name}; box={matched_box.width}x{matched_box.height}",
         }
 
+        # Gui kem anh JPEG (base64) de Telegram co anh that va luu lich su
+        if snap_path and snap_path.exists():
+            try:
+                import base64
+
+                raw = snap_path.read_bytes()
+                if len(raw) <= self.cfg.upload_max_bytes:
+                    payload["imageBase64"] = base64.b64encode(raw).decode("ascii")
+                else:
+                    log.warning("Anh qua lon (%s bytes), bo qua: %s", len(raw), snap_path.name)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Khong doc duoc anh de gui: %s", exc)
+
         result = self.client.send_event(payload)
 
         if result.ok:

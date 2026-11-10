@@ -55,6 +55,7 @@ type EventRow = {
   cameraCode: string;
   vehiclePlate: string;
   imageUrl: string;
+  hasImage: boolean;
   note: string;
 };
 
@@ -385,6 +386,7 @@ export function CamerasClient({
             <THead>
               <TR>
                 <TH>Thời gian</TH>
+                <TH>Ảnh</TH>
                 <TH>Biển số</TH>
                 <TH className="text-right">Tin cậy</TH>
                 <TH>Loại xe</TH>
@@ -396,7 +398,7 @@ export function CamerasClient({
             </THead>
             <TBody>
               {filteredEvents.length === 0 ? (
-                <EmptyRow colSpan={8} message="Chưa có sự kiện nhận diện nào." />
+                <EmptyRow colSpan={9} message="Chưa có sự kiện nhận diện nào." />
               ) : (
                 filteredEvents.map((e) => (
                   <TR key={e.id}>
@@ -405,6 +407,21 @@ export function CamerasClient({
                       <span className="ml-1.5 text-[11px] text-muted-foreground">
                         {fmtDate(e.detectedAt)}
                       </span>
+                    </TD>
+                    <TD className="whitespace-nowrap">
+                      {e.hasImage ? (
+                        <a href={`/api/cameras/events/${e.id}/image`} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/api/cameras/events/${e.id}/image`}
+                            alt={`Ảnh sự kiện ${e.plate ?? "chưa xác định"}`}
+                            className="h-10 w-16 rounded border border-border object-cover"
+                            loading="lazy"
+                          />
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TD>
                     <TD className="whitespace-nowrap font-semibold">
                       {e.plate || <span className="text-muted-foreground">—</span>}

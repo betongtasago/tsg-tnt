@@ -128,3 +128,32 @@
     margin: 12mm;
   }
 }
+
+/* Bảng theo dõi tài xế: in khổ A4 ngang, giữ nguyên màu đầu bảng */
+@media print {
+  body:has(.month-log-print) {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body:has(.month-log-print) @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+  .month-log-print {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .month-log-print input {
+    border: none !important;
+    background: transparent !important;
+    color: #000 !important;
+    font-size: 10px !important;
+  }
+  .month-log-print table {
+    font-size: 10px !important;
+  }
+  .month-log-print th,
+  .month-log-print td {
+    padding: 1px 2px !important;
+  }
+}

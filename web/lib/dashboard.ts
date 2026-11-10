@@ -9,10 +9,13 @@ export async function getDashboardData() {
   const monthStart = vnStartOfMonth(now);
   const weekAgo = addDays(today, -6);
 
+  // Một truy vấn duy nhất cho toàn bộ khoảng cần dùng, rồi lọc trong bộ nhớ.
+  // Trước đây chạy 3 lần quét bảng báo cáo (hôm nay / tháng / tuần) nên trang chậm.
+  const rangeStart = weekAgo < monthStart ? weekAgo : monthStart;
+
   const [
-    todayReports,
-    monthReports,
-    weekReports,
+    rangeReports,
+    todayReportList,
     vehicleStatusGroups,
     driverStatusGroups,
     documents,
@@ -23,17 +26,31 @@ export async function getDashboardData() {
     stations,
   ] = await Promise.all([
     prisma.productionReport.findMany({
+      where: { reportDate: { gte: rangeStart } },
+      select: {
+        reportDate: true,
+        stationId: true,
+        actualVolume: true,
+        plannedVolume: true,
+        tripCount: true,
+      },
+      orderBy: { reportDate: "desc" },
+    }),
+    // Chỉ 6 dòng mới nhất cho danh sách "Báo cáo hôm nay" — không tải cả bảng
+    prisma.productionReport.findMany({
       where: { reportDate: { gte: today } },
-      include: { station: true, customer: true },
+      select: {
+        id: true,
+        grade: true,
+        shift: true,
+        status: true,
+        actualVolume: true,
+        tripCount: true,
+        station: { select: { code: true } },
+        customer: { select: { name: true } },
+      },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.productionReport.findMany({
-      where: { reportDate: { gte: monthStart } },
-      include: { station: true },
-    }),
-    prisma.productionReport.findMany({
-      where: { reportDate: { gte: weekAgo } },
-      include: { station: true },
+      take: 6,
     }),
     prisma.vehicle.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.driver.groupBy({ by: ["status"], _count: { _all: true } }),
@@ -53,6 +70,10 @@ export async function getDashboardData() {
     }),
     prisma.station.findMany({ orderBy: { code: "asc" } }),
   ]);
+
+  const todayReports = rangeReports.filter((r) => r.reportDate >= today);
+  const monthReports = rangeReports.filter((r) => r.reportDate >= monthStart);
+  const weekReports = rangeReports.filter((r) => r.reportDate >= weekAgo);
 
   const sum = (rows: { actualVolume: number }[]) =>
     Math.round(rows.reduce((a, r) => a + r.actualVolume, 0) * 10) / 10;
@@ -148,6 +169,6 @@ export async function getDashboardData() {
     recentEvents,
     todayEventCount,
     unknownEventCount,
-    todayReports,
+    todayReports: todayReportList,
   };
 }

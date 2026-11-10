@@ -30,7 +30,17 @@ export async function GET(req: Request) {
 
   const events = await prisma.detectionEvent.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      detectedAt: true,
+      plate: true,
+      plateConfidence: true,
+      vehicleType: true,
+      direction: true,
+      matchStatus: true,
+      imageUrl: true,
+      imageMime: true,
+      note: true,
       camera: { select: { name: true, code: true } },
       vehicle: { select: { plate: true, code: true } },
     },

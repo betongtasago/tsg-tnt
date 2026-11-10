@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { getStations, getCustomers } from "@/lib/ref-data";
 import { requirePermission } from "@/lib/guard";
 import { can } from "@/lib/rbac";
-import { listReports, reportSummary } from "@/lib/reports";
+import { listReportsPage, countReports, reportSummary, REPORTS_PAGE_SIZE } from "@/lib/reports";
 import { PageHeader, SectionTitle } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,16 +33,22 @@ export default async function ReportsPage({
     customerId?: string;
     status?: string;
     q?: string;
+    page?: string;
   };
 }) {
   const session = await requirePermission("production", "view");
 
-  const [rows, summary, stations, customers] = await Promise.all([
-    listReports(searchParams),
+  const page = Math.max(1, Number(searchParams.page) || 1);
+
+  const [rows, total, summary, stations, customers] = await Promise.all([
+    listReportsPage(searchParams, page),
+    countReports(searchParams),
     reportSummary({ from: searchParams.from, to: searchParams.to }),
-    prisma.station.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
-    prisma.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    getStations(),
+    getCustomers(),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / REPORTS_PAGE_SIZE));
 
   const canCreate = can(session.role, "production", "create");
   const canUpdate = can(session.role, "production", "update");
@@ -148,7 +155,7 @@ export default async function ReportsPage({
           </div>
 
           <div className="card-panel p-4">
-            <SectionTitle hint="Tổng hợp theo công trình">Sản lượng theo khách hàng</SectionTitle>
+        <SectionTitle hint="Tổng hợp theo công trình">Sản lượng theo khách hàng</SectionTitle>
             <div className="space-y-1.5">
               {summary.byCustomer.slice(0, 6).map((c) => {
                 const pct = summary.totalActual > 0 ? Math.round((c.actual / summary.totalActual) * 100) : 0;
@@ -172,15 +179,15 @@ export default async function ReportsPage({
       ) : null}
 
       <div>
-        <SectionTitle hint={`${rows.length} dòng`}>Danh sách báo cáo</SectionTitle>
+        <SectionTitle hint={`${total} dòng · trang ${page}/${totalPages}`}>Danh sách báo cáo</SectionTitle>
         <Table>
           <THead>
             <TR>
-              <TH>Ngày</TH>
+                  <TH>Ngày</TH>
               <TH>Ca</TH>
               <TH>Trạm</TH>
-              <TH>Công trình</TH>
-              <TH>Mác</TH>
+                  <TH>Công trình</TH>
+                  <TH>Mác</TH>
               <TH className="text-right">KH (m³)</TH>
               <TH className="text-right">Thực tế (m³)</TH>
               <TH className="text-right">%</TH>
@@ -250,7 +257,62 @@ export default async function ReportsPage({
             )}
           </TBody>
         </Table>
+
+        {totalPages > 1 && (
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="text-[12px] text-muted-foreground">
+              Hiển thị {(page - 1) * REPORTS_PAGE_SIZE + 1}–
+              {Math.min(page * REPORTS_PAGE_SIZE, total)} trong {total} dòng
+            </p>
+            <div className="flex items-center gap-1.5">
+              <PageLink searchParams={searchParams} page={page - 1} disabled={page <= 1}>
+                Trước
+              </PageLink>
+              <span className="px-2 text-[12px] font-medium tabular-nums">
+                {page}/{totalPages}
+              </span>
+              <PageLink searchParams={searchParams} page={page + 1} disabled={page >= totalPages}>
+                Sau
+              </PageLink>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function PageLink({
+  searchParams,
+  page,
+  disabled,
+  children,
+}: {
+  searchParams: Record<string, string | undefined>;
+  page: number;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (v && k !== "page") qs.set(k, String(v));
+  }
+  qs.set("page", String(page));
+  const href = `/reports?${qs.toString()}`;
+
+  if (disabled) {
+    return (
+      <span className="cursor-not-allowed rounded-md border border-border px-2.5 py-1 text-[12px] text-muted-foreground opacity-50">
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      className="rounded-md border border-border px-2.5 py-1 text-[12px] font-medium hover:bg-muted"
+    >
+      {children}
+    </Link>
   );
 }

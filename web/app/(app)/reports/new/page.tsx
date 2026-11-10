@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { getStations, getCustomers } from "@/lib/ref-data";
 import { requirePermission } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
@@ -11,8 +12,8 @@ export default async function NewReportPage() {
   const session = await requirePermission("production", "create");
 
   const [stations, customers] = await Promise.all([
-    prisma.station.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
-    prisma.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    getStations(),
+    getCustomers(),
   ]);
 
   const hour = new Date().getHours();

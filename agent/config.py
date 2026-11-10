@@ -56,7 +56,7 @@ class Config:
     retention_days: int
     jpeg_quality: int
     upload_max_width: int
-
+    upload_max_bytes: int
     upload_enabled: bool
     image_endpoint: str
 
@@ -183,6 +183,7 @@ def load_config(path: str | Path) -> Config:
         retention_days=int(sto.get("retention_days") or 30),
         jpeg_quality=int(sto.get("jpeg_quality") or 85),
         upload_max_width=int(sto.get("upload_max_width") or 1280),
+        upload_max_bytes=int(sto.get("upload_max_bytes") or 4000000),
         upload_enabled=bool(upl.get("enabled", False)),
         image_endpoint=str(upl.get("image_endpoint") or ""),
         heartbeat_interval=int(hb.get("interval_seconds") or 60),

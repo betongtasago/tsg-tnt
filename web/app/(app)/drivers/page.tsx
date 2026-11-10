@@ -1,15 +1,24 @@
 import { prisma } from "@/lib/db";
+import { getStations } from "@/lib/ref-data";
+import { getMonthLog } from "@/lib/month-log";
 import { requirePermission } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
 import { DriversClient } from "./drivers-client";
+import { MonthLogClient } from "./month-log-client";
+import { DriversTabs } from "./drivers-tabs";
 
 export const dynamic = "force-dynamic";
 
 export default async function DriversPage() {
   const session = await requirePermission("drivers", "view");
 
-  const [drivers, stations] = await Promise.all([
+  const now = new Date();
+  const vnNow = new Date(now.getTime() + 7 * 3600 * 1000);
+  const vnYear = vnNow.getUTCFullYear();
+  const vnMonth = vnNow.getUTCMonth() + 1;
+
+  const [drivers, stations, companySetting, monthRows] = await Promise.all([
     prisma.driver.findMany({
       include: {
         station: true,
@@ -18,7 +27,9 @@ export default async function DriversPage() {
       },
       orderBy: { code: "asc" },
     }),
-    prisma.station.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
+    getStations(),
+    prisma.systemSetting.findUnique({ where: { key: "company.name" } }),
+    getMonthLog(vnYear, vnMonth),
   ]);
 
   const rows = drivers.map((d) => ({
@@ -43,15 +54,29 @@ export default async function DriversPage() {
     <div>
       <PageHeader
         title="Bảng tài / Quản lý tài xế"
-        description="Danh sách tài xế, phân công phương tiện và tình trạng giấy phép lái xe"
+        description="Danh sách tài xế, phân công phương tiện và bảng theo dõi lịch tài tháng"
       />
-      <DriversClient
-        rows={rows}
-        stations={stations.map((s) => ({ id: s.id, label: `${s.code} — ${s.name}` }))}
-        canCreate={can(session.role, "drivers", "create")}
-        canUpdate={can(session.role, "drivers", "update")}
-        canDelete={can(session.role, "drivers", "delete")}
-        canExport={can(session.role, "drivers", "export")}
+      <DriversTabs
+        list={
+          <DriversClient
+            rows={rows}
+            stations={stations.map((s) => ({ id: s.id, label: `${s.code} — ${s.name}` }))}
+            canCreate={can(session.role, "drivers", "create")}
+            canUpdate={can(session.role, "drivers", "update")}
+            canDelete={can(session.role, "drivers", "delete")}
+            canExport={can(session.role, "drivers", "export")}
+          />
+        }
+        monthLog={
+          <MonthLogClient
+            initialYear={vnYear}
+            initialMonth={vnMonth}
+            initialRows={monthRows}
+            canUpdate={can(session.role, "drivers", "update")}
+            canExport={can(session.role, "drivers", "export")}
+            companyName={companySetting?.value ?? "CTCP SX KD DV Bê tông TSG-TNT"}
+          />
+        }
       />
     </div>
   );

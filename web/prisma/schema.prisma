@@ -171,6 +171,7 @@ model Driver {
   vehicles        Vehicle[]
   documents       Document[]
   vehicleHistory  VehicleDriverHistory[]
+  monthLogs       DriverMonthLog[]
 
   @@index([status])
   @@index([fullName])
@@ -341,6 +342,9 @@ model DetectionEvent {
   vehicle      Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   imageUrl     String?
   plateImageUrl String?
+  // Anh JPEG goc do agent gui kem - phuc vu lich su va Telegram
+  imageData    Bytes?
+  imageMime    String?
   note         String?
   createdAt    DateTime    @default(now())
 
@@ -392,3 +396,43 @@ model BackupLog {
   status    String
   createdAt DateTime @default(now())
 }
+
+// ============ BẢNG THEO DÕI TÀI XẾ THEO THÁNG ============
+
+// Mỗi dòng là một tài xế trong một tháng.
+// Khớp với mẫu "BẢNG THEO DÕI SẤP TÀI XẾ BỒN TSG-TNT" của công ty.
+model DriverMonthLog {
+  id       String @id @default(cuid())
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  year  Int
+  month Int
+
+  // Thông tin tài xế (chụp lại tại thời điểm ghi, để bảng tháng cũ không đổi khi sửa hồ sơ)
+  driverCode String
+  driverName String
+  vehiclePlate String?
+
+  // Các cột nhập tay
+  taiNgay     Float? // TÀI NGÀY
+  timeValue   Float? // TIME
+  leaveRepair String? // PHÉP / SỬA CHỮA
+  note        String? // LƯU Ý
+
+  // THEO DÕI NGHỈ 1 BUỔI (3 buổi tính 1 phép)
+  lan1 Int @default(0)
+  lan2 Int @default(0)
+  lan3 Int @default(0)
+
+  // XÁC XE
+  odometer Float?   // số đồng hồ / sản lượng km
+  tireDate DateTime? @db.Date // ngày xoay vỏ gần nhất
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([driverId, year, month])
+  @@index([year, month])
+}
+

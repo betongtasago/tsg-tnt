@@ -314,84 +314,11 @@ async function main() {
   }
   console.log(`  ✓ ${reportCount} dòng báo cáo sản xuất`);
 
-  // ---------- Camera + vùng nhận diện ----------
-  const { encryptSecret } = await import("../lib/crypto");
-
-  const cameraData = [
-    { code: "CAM-CONG", name: "Cổng nhà máy", location: "Cổng chính TNT1", station: "TNT1", rtsp: "rtsp://admin:CHANGE_ME@192.168.1.64:554/Streaming/Channels/101", status: CameraStatus.ONLINE },
-    { code: "CAM-BOM", name: "Bãi xe bồn", location: "Khu bãi trộn TNT1", station: "TNT1", rtsp: "rtsp://admin:CHANGE_ME@192.168.1.65:554/Streaming/Channels/101", status: CameraStatus.ONLINE },
-    { code: "CAM-TNT2", name: "Cổng TNT2", location: "Cổng phụ TNT2", station: "TNT2", rtsp: "rtsp://admin:CHANGE_ME@192.168.1.66:554/Streaming/Channels/101", status: CameraStatus.OFFLINE },
-  ];
-
-  for (const c of cameraData) {
-    const rec = await prisma.camera.upsert({
-      where: { code: c.code },
-      update: {
-        name: c.name,
-        location: c.location,
-        stationId: stations[c.station],
-        status: c.status,
-        lastSeenAt: c.status === CameraStatus.ONLINE ? new Date() : daysFromNow(-3),
-      },
-      create: {
-        code: c.code,
-        name: c.name,
-        location: c.location,
-        stationId: stations[c.station],
-        rtspUrlEnc: encryptSecret(c.rtsp),
-        status: c.status,
-        lastSeenAt: c.status === CameraStatus.ONLINE ? new Date() : daysFromNow(-3),
-      },
-    });
-
-    const existingZone = await prisma.detectionZone.findFirst({ where: { cameraId: rec.id } });
-    if (!existingZone) {
-      await prisma.detectionZone.create({
-        data: {
-          cameraId: rec.id,
-          name: "Vùng cổng chính",
-          points: [
-            { x: 0.15, y: 0.45 },
-            { x: 0.85, y: 0.45 },
-            { x: 0.85, y: 0.92 },
-            { x: 0.15, y: 0.92 },
-          ],
-          direction: "IN",
-        },
-      });
-    }
-  }
-  console.log(`  ✓ ${cameraData.length} camera + vùng nhận diện`);
-
-  // ---------- Sự kiện nhận diện mẫu ----------
-  await prisma.detectionEvent.deleteMany({});
-
-  const camRecords = await prisma.camera.findMany();
-  const plates = vehicleData.map((v) => v.plate);
-  let eventCount = 0;
-
-  for (let i = 0; i < 24; i++) {
-    const cam = camRecords[i % camRecords.length];
-    const known = Math.random() > 0.25;
-    const plate = known ? plates[Math.floor(Math.random() * plates.length)] : null;
-    const detectedAt = new Date(Date.now() - i * 37 * 60 * 1000);
-
-    await prisma.detectionEvent.create({
-      data: {
-        cameraId: cam.id,
-        detectedAt,
-        plate,
-        plateConfidence: plate ? Math.round((0.78 + Math.random() * 0.2) * 100) / 100 : null,
-        vehicleType: Math.random() > 0.3 ? "tanker" : "truck",
-        direction: Math.random() > 0.45 ? Direction.IN : Direction.OUT,
-        matchStatus: plate ? MatchStatus.MATCH : MatchStatus.UNKNOWN,
-        vehicleId: plate ? vehicles[plate] : null,
-        note: plate ? null : "Không đọc được biển số — ảnh đã lưu để kiểm tra thủ công.",
-      },
-    });
-    eventCount++;
-  }
-  console.log(`  ✓ ${eventCount} sự kiện nhận diện`);
+  // ---------- Camera ----------
+  // KHÔNG tạo camera giả. Camera thật do người dùng thêm qua giao diện
+  // (AI Camera giám sát → Thêm camera) và do Agent kết nối RTSP thật.
+  const existingCams = await prisma.camera.count();
+  console.log(`  ✓ ${existingCams} camera (không tạo dữ liệu giả)`);
 
   // ---------- Cấu hình Telegram ----------
   await prisma.telegramConfig.upsert({

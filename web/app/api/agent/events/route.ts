@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { safeCompare } from "@/lib/crypto";
-import { sendTelegram, escapeHtml } from "@/lib/telegram";
+import { sendTelegram, sendTelegramPhoto, escapeHtml } from "@/lib/telegram";
 import { fmtTime } from "@/lib/utils";
 
 /**
@@ -19,6 +19,8 @@ const eventSchema = z.object({
   direction: z.enum(["IN", "OUT", "UNKNOWN"]).optional(),
   imageUrl: z.string().max(1000).optional().nullable(),
   plateImageUrl: z.string().max(1000).optional().nullable(),
+  /** Ảnh JPEG base64 do agent gửi kèm (không cần URL công khai). */
+  imageBase64: z.string().max(6_000_000).optional().nullable(),
   note: z.string().max(500).optional().nullable(),
   /** Bỏ qua kiểm tra chống trùng nếu agent đã tự lọc */
   force: z.boolean().optional(),
@@ -133,6 +135,20 @@ export async function POST(req: Request) {
     }
   }
 
+  // Ảnh: ưu tiên ảnh agent gửi kèm (base64) để Telegram có ảnh thật.
+  let photoBuffer: Buffer | null = null;
+  if (e.imageBase64) {
+    const raw = e.imageBase64.includes(",")
+      ? e.imageBase64.slice(e.imageBase64.indexOf(",") + 1)
+      : e.imageBase64;
+    try {
+      photoBuffer = Buffer.from(raw, "base64");
+      if (photoBuffer.length < 512) photoBuffer = null;
+    } catch {
+      photoBuffer = null;
+    }
+  }
+
   const event = await prisma.detectionEvent.create({
     data: {
       cameraId: camera.id,
@@ -145,6 +161,8 @@ export async function POST(req: Request) {
       vehicleId: vehicle?.id ?? null,
       imageUrl: e.imageUrl ?? null,
       plateImageUrl: e.plateImageUrl ?? null,
+      imageData: photoBuffer ?? null,
+      imageMime: photoBuffer ? "image/jpeg" : null,
       note: e.note ?? null,
     },
   });
@@ -175,7 +193,10 @@ export async function POST(req: Request) {
   }
 
   const notifyType = matchStatus === "MATCH" ? "VEHICLE_IN" : "VEHICLE_UNKNOWN";
-  const telegram = await sendTelegram(notifyType, lines.join("\n"), e.imageUrl ?? undefined);
+
+  const telegram = photoBuffer
+    ? await sendTelegramPhoto(notifyType, lines.join("\n"), photoBuffer, `${camera.code}.jpg`)
+    : await sendTelegram(notifyType, lines.join("\n"), e.imageUrl ?? undefined);
 
   return NextResponse.json({
     ok: true,

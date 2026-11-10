@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { getStations, getCustomers } from "@/lib/ref-data";
 import { requirePermission } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
@@ -18,9 +19,19 @@ export default async function CamerasPage() {
       },
       orderBy: { code: "asc" },
     }),
-    prisma.station.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
+    getStations(),
     prisma.detectionEvent.findMany({
-      include: {
+      select: {
+        id: true,
+        detectedAt: true,
+        plate: true,
+        plateConfidence: true,
+        vehicleType: true,
+        direction: true,
+        matchStatus: true,
+        imageUrl: true,
+        imageMime: true,
+        note: true,
         camera: { select: { name: true, code: true } },
         vehicle: { select: { plate: true, code: true } },
       },
@@ -67,13 +78,14 @@ export default async function CamerasPage() {
     cameraCode: e.camera.code,
     vehiclePlate: e.vehicle?.plate ?? "",
     imageUrl: e.imageUrl ?? "",
+    hasImage: Boolean(e.imageMime),
     note: e.note ?? "",
   }));
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="AI Camera — Giám sát phương tiện"
+        title="AI Camera – Giám sát phương tiện"
         description="Camera IP nội bộ, vùng nhận diện và lịch sử nhận diện biển số"
       />
 

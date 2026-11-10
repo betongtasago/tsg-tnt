@@ -66,6 +66,85 @@ export async function listReports(filters: {
   });
 }
 
+export const REPORTS_PAGE_SIZE = 50;
+
+/** Đếm số dòng khớp bộ lọc, để phân trang. */
+export async function countReports(filters: {
+  from?: string;
+  to?: string;
+  stationId?: string;
+  customerId?: string;
+  status?: string;
+  q?: string;
+}) {
+  const where = buildReportWhere(filters);
+  return prisma.productionReport.count({ where });
+}
+
+/** Một trang báo cáo — chỉ tải đúng số dòng cần hiển thị. */
+export async function listReportsPage(
+  filters: {
+    from?: string;
+    to?: string;
+    stationId?: string;
+    customerId?: string;
+    status?: string;
+    q?: string;
+  },
+  page = 1,
+  pageSize = REPORTS_PAGE_SIZE
+) {
+  const where = buildReportWhere(filters);
+  const safePage = Math.max(1, page);
+  return prisma.productionReport.findMany({
+    where,
+    select: {
+      id: true,
+      reportDate: true,
+      shift: true,
+      grade: true,
+      plannedVolume: true,
+      actualVolume: true,
+      tripCount: true,
+      status: true,
+      station: { select: { code: true } },
+      customer: { select: { name: true } },
+    },
+    orderBy: [{ reportDate: "desc" }, { createdAt: "desc" }],
+    skip: (safePage - 1) * pageSize,
+    take: pageSize,
+  });
+}
+
+function buildReportWhere(filters: {
+  from?: string;
+  to?: string;
+  stationId?: string;
+  customerId?: string;
+  status?: string;
+  q?: string;
+}) {
+  const where: Record<string, unknown> = {};
+
+  if (filters.from || filters.to) {
+    const range: Record<string, Date> = {};
+    if (filters.from) range.gte = parseDateOnly(filters.from);
+    if (filters.to) range.lte = parseDateOnly(filters.to);
+    where.reportDate = range;
+  }
+  if (filters.stationId) where.stationId = filters.stationId;
+  if (filters.customerId) where.customerId = filters.customerId;
+  if (filters.status) where.status = filters.status;
+  if (filters.q) {
+    where.OR = [
+      { grade: { contains: filters.q, mode: "insensitive" } },
+      { supervisorName: { contains: filters.q, mode: "insensitive" } },
+      { customer: { name: { contains: filters.q, mode: "insensitive" } } },
+    ];
+  }
+  return where;
+}
+
 export async function reportSummary(filters: { from?: string; to?: string }) {
   const where: Record<string, unknown> = {};
   if (filters.from || filters.to) {
@@ -75,59 +154,75 @@ export async function reportSummary(filters: { from?: string; to?: string }) {
     where.reportDate = range;
   }
 
-  const rows = await prisma.productionReport.findMany({
-    where,
-    include: { station: true, customer: true },
-  });
+  // Tổng hợp bằng SQL thay vì kéo toàn bộ dòng về Node.
+  // Trước đây mỗi lần mở trang phải tải cả bảng + join station/customer.
+  const [totals, stationGroups, customerGroups, stations] = await Promise.all([
+    prisma.productionReport.aggregate({
+      where,
+      _sum: { actualVolume: true, plannedVolume: true, tripCount: true },
+      _count: { _all: true },
+    }),
+    prisma.productionReport.groupBy({
+      by: ["stationId"],
+      where,
+      _sum: { actualVolume: true, plannedVolume: true, tripCount: true },
+      _count: { _all: true },
+    }),
+    prisma.productionReport.groupBy({
+      by: ["customerId"],
+      where,
+      _sum: { actualVolume: true, plannedVolume: true },
+      _count: { _all: true },
+    }),
+    prisma.station.findMany({ select: { id: true, code: true, name: true } }),
+  ]);
+
+  const stationMap = new Map(stations.map((s) => [s.id, s]));
+  const customerIds = customerGroups.map((g) => g.customerId).filter((x): x is string => Boolean(x));
+  const customers = customerIds.length
+    ? await prisma.customer.findMany({
+        where: { id: { in: customerIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const customerMap = new Map(customers.map((c) => [c.id, c.name]));
 
   const round = (n: number) => Math.round(n * 10) / 10;
 
-  const byStation = new Map<string, { code: string; name: string; actual: number; planned: number; trips: number; rows: number }>();
-  const byCustomer = new Map<string, { name: string; actual: number; planned: number; rows: number }>();
+  const byStation = stationGroups
+    .map((g) => {
+      const st = stationMap.get(g.stationId);
+      return {
+        code: st?.code ?? "—",
+        name: st?.name ?? "—",
+        actual: round(g._sum.actualVolume ?? 0),
+        planned: round(g._sum.plannedVolume ?? 0),
+        trips: g._sum.tripCount ?? 0,
+        rows: g._count._all,
+      };
+    })
+    .sort((a, b) => b.actual - a.actual);
 
-  for (const r of rows) {
-    const st = byStation.get(r.stationId) ?? {
-      code: r.station.code,
-      name: r.station.name,
-      actual: 0,
-      planned: 0,
-      trips: 0,
-      rows: 0,
-    };
-    st.actual += r.actualVolume;
-    st.planned += r.plannedVolume;
-    st.trips += r.tripCount;
-    st.rows += 1;
-    byStation.set(r.stationId, st);
+  const byCustomer = customerGroups
+    .map((g) => ({
+      name: g.customerId ? (customerMap.get(g.customerId) ?? "—") : "Không gắn công trình",
+      actual: round(g._sum.actualVolume ?? 0),
+      planned: round(g._sum.plannedVolume ?? 0),
+      rows: g._count._all,
+    }))
+    .sort((a, b) => b.actual - a.actual);
 
-    const key = r.customerId ?? "none";
-    const cu = byCustomer.get(key) ?? {
-      name: r.customer?.name ?? "Không gắn công trình",
-      actual: 0,
-      planned: 0,
-      rows: 0,
-    };
-    cu.actual += r.actualVolume;
-    cu.planned += r.plannedVolume;
-    cu.rows += 1;
-    byCustomer.set(key, cu);
-  }
-
-  const totalActual = round(rows.reduce((a, r) => a + r.actualVolume, 0));
-  const totalPlanned = round(rows.reduce((a, r) => a + r.plannedVolume, 0));
+  const totalActual = round(totals._sum.actualVolume ?? 0);
+  const totalPlanned = round(totals._sum.plannedVolume ?? 0);
 
   return {
     totalActual,
     totalPlanned,
-    totalTrips: rows.reduce((a, r) => a + r.tripCount, 0),
-    rowCount: rows.length,
+    totalTrips: totals._sum.tripCount ?? 0,
+    rowCount: totals._count._all,
     completion: totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : 0,
-    byStation: [...byStation.values()]
-      .map((s) => ({ ...s, actual: round(s.actual), planned: round(s.planned) }))
-      .sort((a, b) => b.actual - a.actual),
-    byCustomer: [...byCustomer.values()]
-      .map((c) => ({ ...c, actual: round(c.actual), planned: round(c.planned) }))
-      .sort((a, b) => b.actual - a.actual),
+    byStation,
+    byCustomer,
   };
 }
 

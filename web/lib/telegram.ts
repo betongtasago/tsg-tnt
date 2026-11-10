@@ -43,6 +43,66 @@ export async function getConfig() {
 type SendResult = { ok: boolean; error?: string; skipped?: boolean };
 
 /**
+ * Gửi ảnh kèm chú thích. Ảnh được tải lên trực tiếp (multipart) nên không cần
+ * URL công khai — phù hợp vì sự kiện camera nằm sau đăng nhập.
+ */
+export async function sendTelegramPhoto(
+  type: NotifyType,
+  caption: string,
+  photo: Buffer,
+  filename = "event.jpg"
+): Promise<SendResult> {
+  const cfg = await getConfig();
+
+  if (!cfg.enabled) return { ok: false, skipped: true, error: "Telegram đang tắt" };
+
+  const flag = TYPE_FLAG[type];
+  if (flag && flag !== "enabled" && !(cfg as Record<string, unknown>)[flag]) {
+    return { ok: false, skipped: true, error: `Loại thông báo ${type} đang tắt` };
+  }
+
+  if (!cfg.botTokenEnc || !cfg.chatId) {
+    return { ok: false, error: "Chưa cấu hình Bot Token hoặc Chat ID" };
+  }
+
+  let token: string;
+  try {
+    token = decryptSecret(cfg.botTokenEnc);
+  } catch {
+    return { ok: false, error: "Không giải mã được Bot Token" };
+  }
+
+  try {
+    const form = new FormData();
+    form.append("chat_id", cfg.chatId);
+    form.append("caption", caption);
+    form.append("parse_mode", "HTML");
+    form.append("photo", new Blob([new Uint8Array(photo)], { type: "image/jpeg" }), filename);
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(25000),
+    });
+
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+
+    if (!res.ok || !json.ok) {
+      const error = json.description || `HTTP ${res.status}`;
+      await logNotification(type, "FAILED", caption, error);
+      return { ok: false, error };
+    }
+
+    await logNotification(type, "SUCCESS", caption);
+    return { ok: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Lỗi không xác định";
+    await logNotification(type, "FAILED", caption, error);
+    return { ok: false, error };
+  }
+}
+
+/**
  * Gửi tin nhắn Telegram. Tự đọc cấu hình từ DB, giải mã token tại server.
  * Không bao giờ trả token ra ngoài.
  */

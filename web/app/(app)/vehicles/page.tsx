@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { getStations, getCustomers } from "@/lib/ref-data";
 import { requirePermission } from "@/lib/guard";
 import { can } from "@/lib/rbac";
 import { PageHeader } from "@/components/ui/page-header";
@@ -18,7 +19,7 @@ export default async function VehiclesPage() {
       },
       orderBy: { plate: "asc" },
     }),
-    prisma.station.findMany({ where: { isActive: true }, orderBy: { code: "asc" } }),
+    getStations(),
     prisma.driver.findMany({
       where: { status: { in: ["WORKING", "LEAVE"] } },
       select: { id: true, code: true, fullName: true },
@@ -61,7 +62,7 @@ export default async function VehiclesPage() {
     <div>
       <PageHeader
         title="Quản lý phương tiện"
-        description="Đội xe bồn, xe tải, xe bơm — tình trạng hoạt động và hạn giấy tờ"
+        description="Đội xe bồn, xe tải, xe bơm – tình trạng hoạt động và hạn giấy tờ"
       />
       <VehiclesClient
         rows={rows}
