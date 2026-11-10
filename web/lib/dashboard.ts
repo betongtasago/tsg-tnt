@@ -1,20 +1,13 @@
 import { prisma } from "./db";
-import { daysUntil } from "./utils";
+import { addDays, daysUntil, vnParts, vnStartOfDay, vnStartOfMonth } from "./utils";
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
 export async function getDashboardData() {
   const now = new Date();
-  const today = startOfDay(now);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 6);
+  const today = vnStartOfDay(now);
+  const monthStart = vnStartOfMonth(now);
+  const weekAgo = addDays(today, -6);
 
   const [
     todayReports,
@@ -87,17 +80,16 @@ export async function getDashboardData() {
   // Sản lượng 7 ngày gần nhất
   const daily: { date: string; label: string; actual: number; planned: number }[] = [];
   for (let i = 6; i >= 0; i--) {
-    const day = new Date(today);
-    day.setDate(day.getDate() - i);
-    const next = new Date(day);
-    next.setDate(next.getDate() + 1);
+    const day = addDays(today, -i);
+    const next = addDays(day, 1);
     const rows = weekReports.filter((r) => {
       const rd = new Date(r.reportDate);
       return rd >= day && rd < next;
     });
+    const vp = vnParts(day);
     daily.push({
       date: day.toISOString().slice(0, 10),
-      label: `${day.getDate()}/${day.getMonth() + 1}`,
+      label: `${vp.day}/${vp.month}`,
       actual: sum(rows),
       planned: sumPlanned(rows),
     });

@@ -12,6 +12,7 @@ tsconfig.tsbuildinfo
 .env
 .env*.local
 .env.production
+.prod-secrets.json
 
 # ===== Python agent =====
 __pycache__/

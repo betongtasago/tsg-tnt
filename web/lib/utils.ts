@@ -75,15 +75,57 @@ export function todayInput(): string {
   return toDateInput(new Date());
 }
 
-/** Số ngày còn lại tới hạn. Âm nghĩa là đã quá hạn. */
+/**
+ * Các thành phần ngày theo giờ Việt Nam, không phụ thuộc múi giờ của server.
+ * Vercel chạy UTC, nên dùng getFullYear()/getDate() trực tiếp sẽ lệch 7 giờ
+ * mỗi ngày — đúng khoảng thời gian quan trọng nhất của ca đêm.
+ */
+export function vnParts(d: Date | string | null | undefined) {
+  const date = typeof d === "string" ? new Date(d) : (d ?? new Date());
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: VN,
+  }).formatToParts(date);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return { year: get("year"), month: get("month"), day: get("day") };
+}
+
+/** Chuỗi yyyy-mm-dd của hôm nay theo giờ VN. */
+export function vnToday(): string {
+  return toDateInput(new Date());
+}
+
+/** Mốc 00:00 giờ VN của một ngày, trả về Date UTC tương ứng. */
+export function vnStartOfDay(d: Date | string): Date {
+  const { year, month, day } = vnParts(d);
+  return new Date(Date.UTC(year, month - 1, day) - 7 * 3600 * 1000);
+}
+
+/** Mốc 00:00 giờ VN của ngày đầu tháng chứa d. */
+export function vnStartOfMonth(d: Date | string): Date {
+  const { year, month } = vnParts(d);
+  return new Date(Date.UTC(year, month - 1, 1) - 7 * 3600 * 1000);
+}
+
+/** Cộng/trừ số ngày trên một Date, giữ nguyên giờ. */
+export function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+
+/** Số ngày còn lại tới hạn. Âm nghĩa là đã quá hạn. Tính theo ngày lịch VN. */
 export function daysUntil(d: Date | string | null | undefined): number | null {
   if (!d) return null;
   const date = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return null;
-  const today = new Date();
-  const a = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  const b = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-  return Math.round((a - b) / 86400000);
+  const a = vnParts(date);
+  const b = vnParts(new Date());
+  const A = Date.UTC(a.year, a.month - 1, a.day);
+  const B = Date.UTC(b.year, b.month - 1, b.day);
+  return Math.round((A - B) / 86400000);
 }
 
 export type ExpiryLevel = "expired" | "d3" | "d7" | "d15" | "d30" | "ok" | "none";
