@@ -1,0 +1,33 @@
+# ===== Node / Next.js =====
+node_modules/
+.next/
+out/
+build/
+dist/
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# ===== Bien moi truong (KHONG BAO GIO commit) =====
+.env
+.env*.local
+.env.production
+
+# ===== Python agent =====
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+agent/models/*.pt
+agent/models/*.onnx
+agent/snapshots/
+agent/captures/
+agent/logs/
+agent/config.yaml
+
+# ===== He dieu hanh =====
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini

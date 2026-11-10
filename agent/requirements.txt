@@ -1,0 +1,28 @@
+# ===== TSG-TNT AI Camera Agent — thu vien phu thuoc =====
+# Cai dat:  pip install -r requirements.txt
+#
+# Luu y: ultralytics se tu tai model .pt trong lan chay dau tien.
+# Neu may khong co GPU, dung ban CPU cua torch (mac dinh khi pip install).
+
+# Doc luong RTSP
+opencv-python==4.10.0.84
+
+# Nhan dien phuong tien (YOLO)
+ultralytics==8.3.40
+
+# Gui HTTP len WebApp
+requests==2.32.3
+
+# Doc cau hinh
+PyYAML==6.0.2
+
+# OCR bien so — chon mot trong hai:
+# PaddleOCR (chinh xac hon voi bien so, cai dat nang hon)
+paddleocr==2.9.1
+paddlepaddle==2.6.2
+
+# EasyOCR (du phong, cai dat nhe hon)
+# easyocr==1.7.2
+
+# Tien ich
+numpy==1.26.4

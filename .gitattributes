@@ -1,0 +1,17 @@
+# Chuan hoa xuong dong — tranh Git bao "LF will be replaced by CRLF" moi lan commit
+* text=auto eol=lf
+
+# Script Windows can giu CRLF de chay dung
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# File nhi phan
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.xlsx binary
+*.pdf binary

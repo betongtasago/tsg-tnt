@@ -1,0 +1,115 @@
+# ===== TSG-TNT AI Camera Agent =====
+# Agent chay tren may Windows tai nha may, ket noi camera IP qua LAN (RTSP),
+# chay nhan dien AI cuc bo, roi day su kien len WebApp qua HTTPS API.
+#
+# Khong dat mat khau camera hay token Telegram trong file nay neu chia se repo.
+# File nay da duoc .gitignore.
+
+# --- Ket noi WebApp ---
+webapp:
+  # URL WebApp (Vercel hoac domain rieng)
+  base_url: "https://tsg-tnt.vercel.app"
+  # Token phai khop AGENT_API_TOKEN trong .env cua WebApp
+  api_token: "THAY_BANG_AGENT_API_TOKEN"
+  # Duong dan endpoint su kien
+  events_path: "/api/agent/events"
+  # Thoi gian cho toi da moi request (giay)
+  timeout_seconds: 20
+  # So lan thu lai khi gui that bai
+  retry: 3
+  retry_backoff_seconds: 5
+
+# --- Camera ---
+# Moi camera can: code (khop ma trong WebApp), rtsp_url, va (tuy chon) vung ROI.
+# Neu khong khai bao zones, agent dung toan bo khung hinh.
+cameras:
+  - code: "CAM-CONG"
+    name: "Cổng nhà máy"
+    rtsp_url: "rtsp://admin:matkhau@192.168.1.64:554/Streaming/Channels/101"
+    enabled: true
+    # Vung nhan dien chuan hoa 0..1 (x, y theo ty le khung hinh)
+    zones:
+      - name: "Vùng cổng chính"
+        direction: "IN"
+        points:
+          - { x: 0.15, y: 0.55 }
+          - { x: 0.85, y: 0.55 }
+          - { x: 0.95, y: 0.95 }
+          - { x: 0.05, y: 0.95 }
+
+  - code: "CAM-BOM"
+    name: "Khu vực trạm bơm"
+    rtsp_url: "rtsp://admin:matkhau@192.168.1.65:554/Streaming/Channels/101"
+    enabled: false
+    zones: []
+
+# --- Nhan dien ---
+detection:
+  # Model YOLO: yolo11n.pt (nhanh) | yolo11s.pt (chinh xac hon)
+  model: "yolo11n.pt"
+  # Nguong tin cay phat hien phuong tien
+  confidence: 0.45
+  # Cac lop COCO duoc coi la phuong tien (2=car, 5=bus, 7=truck)
+  vehicle_classes: [2, 5, 7]
+  # Kich thuoc anh dua vao model
+  imgsz: 640
+  # Thiet bi: "cpu" hoac "0" (GPU dau tien)
+  device: "cpu"
+  # Chi xu ly 1 frame moi N frame de giam tai CPU
+  frame_skip: 5
+  # Khoang cach toi thieu giua 2 lan chup cung 1 xe (giay) - agent tu loc truoc
+  min_event_interval_seconds: 60
+  # Dien tich bounding box toi thieu so voi khung hinh (loc vat the nho)
+  min_box_area_ratio: 0.01
+
+# --- OCR bien so ---
+ocr:
+  enabled: true
+  # Ngon ngu: "vi" hoac "en". Bien so VN thuong doc tot voi "en".
+  lang: "en"
+  # Tu khoa PaddleOCR neu dung engine paddle
+  engine: "paddleocr"
+  # Nguong tin cay toi thieu de chap nhan bien so
+  min_confidence: 0.55
+  # Ghi anh bien so da crop ra thu muc snapshots
+  save_plate_crop: true
+
+# --- Luu anh ---
+storage:
+  # Thu muc luu snapshot cuc bo
+  snapshot_dir: "./snapshots"
+  # Giu anh trong bao nhieu ngay (0 = giu mai)
+  retention_days: 30
+  # Chat luong JPEG 1-100
+  jpeg_quality: 85
+  # Chieu rong anh gui len WebApp (px). Anh duoc resize truoc khi upload.
+  upload_max_width: 1280
+
+# --- Upload anh len WebApp ---
+upload:
+  # Bat/tat upload anh kem su kien. Neu tat, chi gui metadata.
+  enabled: false
+  # Endpoint nhan anh (xem docs/AGENT.md - can bat storage ben ngoai)
+  image_endpoint: ""
+
+# --- Heartbeat ---
+heartbeat:
+  # Gui trang thai camera len WebApp moi N giay
+  interval_seconds: 60
+  # Sau bao nhieu giay khong doc duoc frame thi coi la offline
+  offline_after_seconds: 30
+
+# --- Ket noi lai ---
+reconnect:
+  # Thoi gian cho truoc khi thu ket noi lai (giay)
+  delay_seconds: 10
+  # So lan thu toi da truoc khi bo cuoc va bao offline (0 = vo han)
+  max_attempts: 0
+
+# --- Logging ---
+logging:
+  level: "INFO"
+  # File log (xoay vong theo ngay)
+  file: "./logs/agent.log"
+  # In ra console
+  console: true

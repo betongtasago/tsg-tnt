@@ -1,0 +1,391 @@
+// Prisma schema — Hệ thống quản lý vận hành TSG-TNT
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ NGƯỜI DÙNG & PHÂN QUYỀN ============
+
+enum Role {
+  ADMIN
+  BAN_GIAM_DOC
+  KE_TOAN
+  DIEU_DO
+  QUAN_LY_DOI_XE
+  BAO_VE
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         Role      @default(BAO_VE)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs    AuditLog[]
+  reports      ProductionReport[] @relation("ReportCreator")
+  approved     ProductionReport[] @relation("ReportApprover")
+
+  @@index([role])
+}
+
+// Quyền chi tiết theo vai trò + phân hệ
+model RolePermission {
+  id        String  @id @default(cuid())
+  role      Role
+  module    String // production | drivers | vehicles | documents | cameras | telegram | users | settings
+  canView   Boolean @default(false)
+  canCreate Boolean @default(false)
+  canUpdate Boolean @default(false)
+  canDelete Boolean @default(false)
+  canExport Boolean @default(false)
+
+  @@unique([role, module])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String // CREATE | UPDATE | DELETE | LOGIN | EXPORT | SEND
+  module    String
+  entityId  String?
+  detail    Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module])
+}
+
+// ============ DANH MỤC NỀN ============
+
+model Station {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  reports   ProductionReport[]
+  drivers   Driver[]
+  vehicles  Vehicle[]
+  cameras   Camera[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  contact   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  reports   ProductionReport[]
+}
+
+// ============ BÁO CÁO SẢN XUẤT ============
+
+enum Shift {
+  SANG
+  CHIEU
+  DEM
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+model ProductionReport {
+  id             String       @id @default(cuid())
+  reportDate     DateTime     @db.Date
+  shift          Shift
+  stationId      String
+  station        Station      @relation(fields: [stationId], references: [id])
+  customerId     String?
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  grade          String // Mác bê tông, ví dụ M250
+  slump          Int? // Độ sụt (cm)
+  plannedVolume  Float        @default(0)
+  actualVolume   Float        @default(0)
+  truckCount     Int          @default(0)
+  tripCount      Int          @default(0)
+  startTime      String? // HH:mm
+  endTime        String? // HH:mm
+  supervisorName String?
+  incidentNote   String?
+  status         ReportStatus @default(DRAFT)
+  createdById    String?
+  createdBy      User?        @relation("ReportCreator", fields: [createdById], references: [id])
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedBy     User?        @relation("ReportApprover", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([reportDate])
+  @@index([stationId, reportDate])
+  @@unique([reportDate, shift, stationId, customerId, grade])
+}
+
+// ============ TÀI XẾ ============
+
+enum DriverStatus {
+  WORKING
+  LEAVE
+  RESIGNED
+}
+
+model Driver {
+  id              String       @id @default(cuid())
+  code            String       @unique
+  fullName        String
+  phone           String?
+  stationId       String?
+  station         Station?     @relation(fields: [stationId], references: [id])
+  joinDate        DateTime?    @db.Date
+  status          DriverStatus @default(WORKING)
+  shift           Shift?
+  note            String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  vehicles        Vehicle[]
+  documents       Document[]
+  vehicleHistory  VehicleDriverHistory[]
+
+  @@index([status])
+  @@index([fullName])
+}
+
+model VehicleDriverHistory {
+  id         String   @id @default(cuid())
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId  String
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fromDate   DateTime @default(now())
+  toDate     DateTime?
+  note       String?
+
+  @@index([driverId])
+  @@index([vehicleId])
+}
+
+// ============ PHƯƠNG TIỆN ============
+
+enum VehicleType {
+  BON // Xe bồn bê tông
+  TAI // Xe tải
+  BOM // Xe bơm
+  KHAC
+}
+
+enum VehicleStatus {
+  ACTIVE // Đang hoạt động
+  REPAIR // Đang sửa chữa
+  MAINTENANCE // Đang bảo dưỡng
+  SUSPENDED // Tạm ngưng
+  RETIRED // Ngừng sử dụng
+}
+
+model Vehicle {
+  id                 String        @id @default(cuid())
+  plate              String        @unique
+  code               String?       @unique
+  type               VehicleType   @default(BON)
+  brand              String?
+  year               Int?
+  capacity           Float? // m3
+  driverId           String?
+  driver             Driver?       @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  stationId          String?
+  station            Station?      @relation(fields: [stationId], references: [id])
+  status             VehicleStatus @default(ACTIVE)
+  registrationDate   DateTime?     @db.Date
+  registrationExpiry DateTime?     @db.Date
+  insuranceExpiry    DateTime?     @db.Date
+  imageUrl           String?
+  note               String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  documents          Document[]
+  driverHistory      VehicleDriverHistory[]
+  detectionEvents    DetectionEvent[]
+
+  @@index([status])
+  @@index([plate])
+}
+
+// ============ GIẤY TỜ / ĐĂNG KIỂM / BẢO HIỂM ============
+
+enum DocEntity {
+  VEHICLE
+  DRIVER
+}
+
+enum DocType {
+  DANG_KIEM // Giấy chứng nhận đăng kiểm
+  BAO_HIEM_TNDS // Bảo hiểm TNDS
+  BAO_HIEM_VAT_CHAT // Bảo hiểm vật chất
+  PHU_HIEU // Phù hiệu vận tải
+  GPLX // Giấy phép lái xe
+  KHAC
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  entity     DocEntity
+  docType    DocType
+  vehicleId  String?
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId   String?
+  driver     Driver?   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  number     String?
+  licenseClass String? // Hạng GPLX: B2, C, D, E...
+  issuedDate DateTime? @db.Date
+  expiryDate DateTime? @db.Date
+  fileUrl    String?
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([expiryDate])
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+// ============ CAMERA & AI ============
+
+enum CameraStatus {
+  ONLINE
+  OFFLINE
+  UNKNOWN
+}
+
+model Camera {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  location    String?
+  stationId   String?
+  station     Station?     @relation(fields: [stationId], references: [id])
+  rtspUrlEnc  String // Mã hóa AES-256-GCM, KHÔNG bao giờ trả ra client
+  status      CameraStatus @default(UNKNOWN)
+  lastSeenAt  DateTime?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  zones       DetectionZone[]
+  events      DetectionEvent[]
+
+  @@index([status])
+}
+
+model DetectionZone {
+  id         String   @id @default(cuid())
+  cameraId   String
+  camera     Camera   @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  name       String
+  // Mảng điểm chuẩn hóa 0..1: [{x:0.1,y:0.2}, ...]
+  points     Json
+  direction  String   @default("IN") // IN | OUT | BOTH
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([cameraId])
+}
+
+enum MatchStatus {
+  MATCH // Khớp danh sách công ty
+  UNKNOWN // Không xác định / không khớp
+}
+
+enum Direction {
+  IN
+  OUT
+  UNKNOWN
+}
+
+model DetectionEvent {
+  id           String      @id @default(cuid())
+  cameraId     String
+  camera       Camera      @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  detectedAt   DateTime    @default(now())
+  plate        String?
+  plateConfidence Float?
+  vehicleType  String? // tanker | truck | car | ...
+  direction    Direction   @default(UNKNOWN)
+  matchStatus  MatchStatus @default(UNKNOWN)
+  vehicleId    String?
+  vehicle      Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  imageUrl     String?
+  plateImageUrl String?
+  note         String?
+  createdAt    DateTime    @default(now())
+
+  @@index([detectedAt])
+  @@index([plate])
+  @@index([cameraId])
+}
+
+// ============ TELEGRAM ============
+
+model TelegramConfig {
+  id            String   @id @default("singleton")
+  botTokenEnc   String?
+  chatId        String?
+  enabled       Boolean  @default(false)
+  notifyReport  Boolean  @default(true)
+  notifyVehicleIn Boolean @default(true)
+  notifyUnknown Boolean  @default(true)
+  notifyCameraOffline Boolean @default(true)
+  notifyDocExpiry Boolean @default(true)
+  notifyDailySummary Boolean @default(true)
+  dedupeSeconds Int      @default(120)
+  updatedAt     DateTime @updatedAt
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  type      String
+  status    String // SUCCESS | FAILED
+  message   String?
+  error     String?
+  sentAt    DateTime @default(now())
+
+  @@index([sentAt])
+}
+
+// ============ CÀI ĐẶT HỆ THỐNG ============
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model BackupLog {
+  id        String   @id @default(cuid())
+  filename  String
+  sizeBytes Int
+  status    String
+  createdAt DateTime @default(now())
+}
