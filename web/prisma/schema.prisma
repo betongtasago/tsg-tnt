@@ -1,6 +1,9 @@
 // Prisma schema — Hệ thống quản lý vận hành TSG-TNT
 generator client {
   provider = "prisma-client-js"
+  // Vercel chạy trên AWS Lambda (Linux x64). Máy dev là Windows.
+  // Khai báo cả hai để `prisma generate` tạo đúng engine cho từng môi trường.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
